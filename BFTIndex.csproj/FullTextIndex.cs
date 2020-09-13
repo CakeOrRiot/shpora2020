@@ -75,7 +75,7 @@ namespace BFTIndex
         public double Evaluate(string word)
         {
             var docsWithWordCount = documents.Where(doc => doc.Value.Contains(word)).Count();
-            return Math.Log10((double)documents.Count / (docsWithWordCount + 1));
+            return Math.Log10((double)documents.Count / (docsWithWordCount));
         }
     }
 

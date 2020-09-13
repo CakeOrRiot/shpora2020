@@ -40,9 +40,9 @@ namespace BFTIndex.Tests
                 ["2"] = doc2
             };
             IDF idfEvaluator = new IDF(documents);
-            Assert.AreEqual(Math.Log10((double)documents.Count / 3), idfEvaluator.Evaluate(doc1[0]), eps);
-            Assert.AreEqual(Math.Log10((double)documents.Count / 3), idfEvaluator.Evaluate(doc1[2]), eps);
-            Assert.AreEqual(Math.Log10((double)documents.Count / 2), idfEvaluator.Evaluate(doc1[3]), eps);
+            Assert.AreEqual(Math.Log10((double)documents.Count / 2), idfEvaluator.Evaluate(doc1[0]), eps);
+            Assert.AreEqual(Math.Log10((double)documents.Count / 2), idfEvaluator.Evaluate(doc1[2]), eps);
+            Assert.AreEqual(Math.Log10((double)documents.Count / 1), idfEvaluator.Evaluate(doc1[3]), eps);
         }
     }
 }

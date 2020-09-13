@@ -55,12 +55,12 @@ namespace BFTIndex.Tests
         [Test]
         public void AddTest()
         {
-            var expected = new MatchedDocument[0];
-            Assert.AreEqual(fullTextIndex.Search("321"), expected);
+            var expected = new string[0];
+            TestSearch(expected, fullTextIndex.Search("321"));
             fullTextIndex.AddOrUpdate("3", "321...");
             fullTextIndex.AddOrUpdate("4", "341...");
-            expected = new MatchedDocument[] { new MatchedDocument("3", 0) };
-            Assert.AreEqual(expected, fullTextIndex.Search("321"));
+            expected = new string[] { "3" };
+            TestSearch(expected, fullTextIndex.Search("321"));
         }
 
         [TestCase("РАЗ ДВА")]
