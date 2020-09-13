@@ -1,8 +1,9 @@
 ﻿using NUnit.Framework;
-using BFTIndex;
 using System.Collections.Generic;
 using BFTIndex.Models;
-using NUnit.Framework.Constraints;
+using System.Linq;
+using System.ComponentModel.Design;
+using NUnit.Framework.Internal;
 
 namespace BFTIndex.Tests
 {
@@ -15,6 +16,13 @@ namespace BFTIndex.Tests
             fullTextIndex = new FullTextIndexFactory().Create();
         }
 
+        private void TestSearch(string[] expectedIds, MatchedDocument[] searchResult)
+        {
+            var ids = searchResult.Select(doc => doc.Id).OrderBy(id => id).ToArray();
+            expectedIds = expectedIds.OrderBy(id => id).ToArray();
+            Assert.AreEqual(expectedIds, ids);
+        }
+
         [TestCase("ds")]
         [TestCase("abs.ds")]
         [TestCase("abs.ds,,oqpe")]
@@ -24,8 +32,8 @@ namespace BFTIndex.Tests
         {
             fullTextIndex.AddOrUpdate("1", "abs ds...sad  .... fds fa ,.das/oqpe[ ewq[ [[]]");
             fullTextIndex.AddOrUpdate("2", "");
-            var expected = new MatchedDocument[] { new MatchedDocument("1", 0) };
-            Assert.AreEqual(expected, fullTextIndex.Search(query));
+            var expected = new string[] { "1" };
+            TestSearch(expected, fullTextIndex.Search(query));
         }
 
         [TestCase("")]
@@ -37,11 +45,11 @@ namespace BFTIndex.Tests
         [Test]
         public void UpdateTest()
         {
-            var expected = new MatchedDocument[0];
-            Assert.AreEqual(fullTextIndex.Search("gfgf"), expected);
+            var expected = new string[0];
+            TestSearch(expected, fullTextIndex.Search("gfgf"));
             fullTextIndex.AddOrUpdate("2", "gfgf");
-            expected = new MatchedDocument[] { new MatchedDocument("2", 0) };
-            Assert.AreEqual(expected, fullTextIndex.Search("gfgf"));
+            expected = new string[] { "2" };
+            TestSearch(expected, fullTextIndex.Search("gfgf"));
         }
 
         [Test]
@@ -66,11 +74,9 @@ namespace BFTIndex.Tests
             fullTextIndex.AddOrUpdate("7", "раз-..два..");
             fullTextIndex.AddOrUpdate("10", "раЗ-..два..");
             fullTextIndex.AddOrUpdate("11", "раЫЗ-..два..");
-            var expected = new MatchedDocument[] { new MatchedDocument("1", 0),
-                new MatchedDocument("2", 0),
-                new MatchedDocument("7", 0),
-                new MatchedDocument("10",0)};
-            Assert.AreEqual(expected, fullTextIndex.Search(query));
+            var expected = new string[] { "1", "10", "2", "7" };
+
+            TestSearch(expected, fullTextIndex.Search(query));
         }
     }
 

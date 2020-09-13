@@ -59,63 +59,6 @@ namespace BFTIndex
         }
     }
 
-    public static class ListExtentions
-    {
-        public static int LowerBound(this List<string> list, string value)
-        {
-            var left = -1;
-            var right = list.Count - 1;
-
-            while (right - left > 1)
-            {
-                var mid = (left + right) / 2;
-                if (list[mid].CompareTo(value) >= 0)
-                {
-                    right = mid;
-                }
-                else
-                {
-                    left = mid;
-                }
-            }
-
-            return value.Equals(list[right]) ? right : -1;
-        }
-
-        public static int UpperBound(this List<string> list, string value)
-        {
-            var left = 0;
-            var right = list.Count - 1;
-            var ans = -1;
-
-            while (left <= right)
-            {
-                var mid = (left + right) / 2;
-
-                if (list[mid] == value)
-                {
-                    ans = mid;
-                    left = mid;
-                }
-                else if (list[mid].CompareTo(value) > 0)
-                    right = mid - 1;
-                else
-                    left = mid + 1;
-            }
-
-            return ans;
-        }
-
-        public static int CountElementInSortedArray(this List<string> list, string value)
-        {
-            var lowerBound = list.LowerBound(value);
-            if (lowerBound == -1)
-                return 0;
-            var upperBound = list.UpperBound(value);
-            return upperBound - lowerBound + 1;
-        }
-    }
-
     interface IMetric<T>
     {
         double Evaluate(T x);
@@ -132,7 +75,7 @@ namespace BFTIndex
         public double Evaluate(string word)
         {
             var docsWithWordCount = documents.Where(doc => doc.Value.Contains(word)).Count();
-            return Math.Log10(documents.Count / (docsWithWordCount + 1));
+            return Math.Log10((double)documents.Count / (docsWithWordCount + 1));
         }
     }
 
@@ -146,7 +89,7 @@ namespace BFTIndex
 
         public double Evaluate(string word)
         {
-            return document.Count(word) / document.Length;
+            return (double)document.Count(word) / document.Length;
         }
     }
 
@@ -173,43 +116,26 @@ namespace BFTIndex
         private List<string> words;
         public double Weight { get; private set; }
         public int Length => words.Count;
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="doc">Must be sorted</param>
-        public Document(IEnumerable<string> doc)
-        {
-            words = doc.ToList();
-        }
 
-        //MERGE O(N) надо сделать
-        public void Add(string word)
+        public Document(IEnumerable<string> words)
         {
-            words.Add(word);
-            words.OrderBy(w => w);
-        }
-
-        //MERGE O(N) надо сделать
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="words">Must be sorted</param>
-        public void Add(IEnumerable<string> words)
-        {
-            this.words.AddRange(words);
-            this.words.OrderBy(word => word);
+            this.words = words.ToList();
         }
 
         public bool Contains(string word)
         {
-            return words.BinarySearch(word) >= 0;
+            return words.Contains(word);
         }
 
         public int Count(string word)
         {
-            return words.CountElementInSortedArray(word);
+            return words.Where(w => word == w).Count();
         }
 
+        public string this[int index]
+        {
+            get => words[index];
+        }
 
     }
 
@@ -240,10 +166,11 @@ namespace BFTIndex
         //Ќадо декомпозировать на несколько методов
         private IEnumerable<string> GetAllowedNormalizedSortedWords(string text)
         {
+            var words = GetWords(text);
             return GetWords(text)
                 .Where(stopWordsFilter.IsAllowedWord)
                 .Select(word => normalizer.Normalize(word))
-                .OrderBy(word => word)
+                //.OrderBy(word => word)
                 .ToList();
         }
 
@@ -277,12 +204,8 @@ namespace BFTIndex
             var documentsWithQueryWords = documents
                 .Where(doc => queryWords.All(queryWord => doc.Value.Contains(queryWord)));
 
-            var tfidf = documentsWithQueryWords
-                .Select(doc => TFIDF(queryWords, doc.Value))
-                .Sum();
-
             return documentsWithQueryWords
-                .Select(doc => new MatchedDocument(doc.Key, tfidf))
+                .Select(doc => new MatchedDocument(doc.Key, TFIDF(queryWords, doc.Value)))
                 .OrderBy(doc => doc.Weight)
                 .ToArray();
         }
