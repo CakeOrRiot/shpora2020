@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using BFTIndex.Models;
 using System.Linq;
-using System.ComponentModel.Design;
 using NUnit.Framework.Internal;
 
 namespace BFTIndex.Tests

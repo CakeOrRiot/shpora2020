@@ -139,38 +139,51 @@ namespace BFTIndex
 
     }
 
+    public class QueryParser
+    {
+        public IEnumerable<string> GetAllWords(string text)
+        {
+            var matches = Regex.Matches(text, @"\w+");
+            return matches.Cast<Match>().Select(match => match.Value);
+        }
+
+        public IEnumerable<string> GetAllAllowedWords(string text)
+        {
+            var matches = Regex.Matches(text, @"^(?!.*not[\W+]\w+).*$");
+            return matches.Cast<Match>().Select(match => match.Value);
+        }
+    }
+
     public class FullTextIndex : IFullTextIndex
     {
         private Dictionary<string, Document> documents;
         private readonly StopWordsFilter stopWordsFilter;
         private readonly Normalizer normalizer;
+        private readonly QueryParser parser;
         public FullTextIndex()
         {
             stopWordsFilter = new StopWordsFilter();
             normalizer = new Normalizer();
             documents = new Dictionary<string, Document>();
+            parser = new QueryParser();
         }
         public FullTextIndex(string[] stopWords, Dictionary<char, char> normalizationTable)
         {
             normalizer = new Normalizer(normalizationTable);
             stopWordsFilter = new StopWordsFilter(new HashSet<string>(stopWords), normalizer);
             documents = new Dictionary<string, Document>();
+            parser = new QueryParser();
         }
 
-        private IEnumerable<string> GetWords(string text)
-        {
-            var matches = Regex.Matches(text, @"\w+");
-            return matches.Cast<Match>().Select(match => match.Value);
-        }
+
 
         //Надо декомпозировать на несколько методов
         private IEnumerable<string> GetAllowedNormalizedSortedWords(string text)
         {
-            var words = GetWords(text);
-            return GetWords(text)
+            //var words = parser.GetAllWords(text);
+            return parser.GetAllWords(text)
                 .Where(stopWordsFilter.IsAllowedWord)
                 .Select(word => normalizer.Normalize(word))
-                //.OrderBy(word => word)
                 .ToList();
         }
 
