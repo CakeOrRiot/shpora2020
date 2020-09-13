@@ -3,27 +3,26 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using BFTIndex.Models;
-using NUnit.Framework;
 
 namespace BFTIndex
 {
-    public interface IWordsFilter
-    {
-        IEnumerable<string> Filter(IEnumerable<string> words);
-    }
-
-    public class Normalizer : IWordsFilter
+    public class Normalizer
     {
         public readonly Dictionary<char, char> normalizationTable;
+        public Normalizer()
+        {
+            normalizationTable = new Dictionary<char, char>();
+        }
         public Normalizer(Dictionary<char, char> normalizationTable)
         {
             this.normalizationTable = normalizationTable
                 .Select(charPair =>
-                        new KeyValuePair<char, char>(char.ToLowerInvariant(charPair.Key), char.ToLowerInvariant(charPair.Value)))
+                        new KeyValuePair<char, char>(char.ToLowerInvariant(charPair.Key),
+                        char.ToLowerInvariant(charPair.Value)))
                 .ToDictionary(charPair => charPair.Key, charPair => charPair.Value);
         }
 
-        private char NormalizeChar(char ch)
+        public char NormalizeChar(char ch)
         {
             ch = char.ToLowerInvariant(ch);
             if (normalizationTable.ContainsKey(ch))
@@ -31,25 +30,32 @@ namespace BFTIndex
             return ch;
         }
 
-        public static IEnumerable<string> Filter(this IEnumerable<string> words, Dictionary<char,char>normalizationTable)
+        public string Normalize(string word)
         {
-            return words.Select(word => new string(word
+            return new string(word
                 .Select(NormalizeChar)
                 .ToArray())
-                .ToLowerInvariant());
+                .ToLowerInvariant();
         }
     }
 
-    public class StopWordsFilter : IWordsFilter
+    public class StopWordsFilter
     {
         public readonly HashSet<string> stopWords;
-        public StopWordsFilter(HashSet<string> stopWords)
+        private readonly Normalizer normalizer;
+        public StopWordsFilter()
         {
-            this.stopWords = stopWords;
+            stopWords = new HashSet<string>();
+            normalizer = new Normalizer();
         }
-        public IEnumerable<string> Filter(IEnumerable<string> words)
+        public StopWordsFilter(HashSet<string> stopWords, Normalizer normalizer)
         {
-            return words.Where(word => !stopWords.Contains(word));
+            this.normalizer = normalizer;
+            this.stopWords = stopWords.Select(normalizer.Normalize).ToHashSet();
+        }
+        public bool IsAllowedWord(string word)
+        {
+            return !stopWords.Contains(normalizer.Normalize(word));
         }
     }
 
@@ -57,26 +63,23 @@ namespace BFTIndex
     {
         public static int LowerBound(this List<string> list, string value)
         {
-            var left = 0;
+            var left = -1;
             var right = list.Count - 1;
-            var ans = -1;
 
-            while (left <= right)
+            while (right - left > 1)
             {
                 var mid = (left + right) / 2;
-
-                if (list[mid] == value)
+                if (list[mid].CompareTo(value) >= 0)
                 {
-                    ans = mid;
-                    left = mid - 1;
+                    right = mid;
                 }
-                else if (list[mid].CompareTo(value) > 0)
-                    right = mid - 1;
                 else
-                    left = mid + 1;
+                {
+                    left = mid;
+                }
             }
 
-            return ans;
+            return value.Equals(list[right]) ? right : -1;
         }
 
         public static int UpperBound(this List<string> list, string value)
@@ -92,7 +95,7 @@ namespace BFTIndex
                 if (list[mid] == value)
                 {
                     ans = mid;
-                    left = mid + 1;
+                    left = mid;
                 }
                 else if (list[mid].CompareTo(value) > 0)
                     right = mid - 1;
@@ -113,46 +116,133 @@ namespace BFTIndex
         }
     }
 
+    interface IMetric<T>
+    {
+        double Evaluate(T x);
+    }
+
+    class IDF : IMetric<string>
+    {
+        private Dictionary<string, Document> documents;
+        public IDF(Dictionary<string, Document> documents)
+        {
+            this.documents = documents;
+        }
+
+        public double Evaluate(string word)
+        {
+            var docsWithWordCount = documents.Where(doc => doc.Value.Contains(word)).Count();
+            return Math.Log10(documents.Count / (docsWithWordCount + 1));
+        }
+    }
+
+    class TF : IMetric<string>
+    {
+        private Document document;
+        public TF(Document document)
+        {
+            this.document = document;
+        }
+
+        public double Evaluate(string word)
+        {
+            return document.Count(word) / document.Length;
+        }
+    }
+
+    class TFIDF : IMetric<string>
+    {
+        private Dictionary<string, Document> documents;
+        private Document doc;
+        public TFIDF(Dictionary<string, Document> documents, Document doc)
+        {
+            this.documents = documents;
+            this.doc = doc;
+        }
+
+        public double Evaluate(string word)
+        {
+            var tf = new TF(doc);
+            var idf = new IDF(documents);
+            return tf.Evaluate(word) * idf.Evaluate(word);
+        }
+    }
+
+    public class Document
+    {
+        private List<string> words;
+        public double Weight { get; private set; }
+        public int Length => words.Count;
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="doc">Must be sorted</param>
+        public Document(IEnumerable<string> doc)
+        {
+            words = doc.ToList();
+        }
+
+        //MERGE O(N) надо сделать
+        public void Add(string word)
+        {
+            words.Add(word);
+            words.OrderBy(w => w);
+        }
+
+        //MERGE O(N) надо сделать
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="words">Must be sorted</param>
+        public void Add(IEnumerable<string> words)
+        {
+            this.words.AddRange(words);
+            this.words.OrderBy(word => word);
+        }
+
+        public bool Contains(string word)
+        {
+            return words.BinarySearch(word) >= 0;
+        }
+
+        public int Count(string word)
+        {
+            return words.CountElementInSortedArray(word);
+        }
+
+
+    }
+
     public class FullTextIndex : IFullTextIndex
     {
-        private Dictionary<string, List<string>> documents;
+        private Dictionary<string, Document> documents;
         private readonly StopWordsFilter stopWordsFilter;
         private readonly Normalizer normalizer;
         public FullTextIndex()
         {
-            stopWordsFilter = new StopWordsFilter(new HashSet<string>());
-            normalizer = new Normalizer(new Dictionary<char, char>());
-            documents = new Dictionary<string, List<string>>();
+            stopWordsFilter = new StopWordsFilter();
+            normalizer = new Normalizer();
+            documents = new Dictionary<string, Document>();
         }
         public FullTextIndex(string[] stopWords, Dictionary<char, char> normalizationTable)
         {
-            stopWordsFilter = new StopWordsFilter(new HashSet<string>(stopWords));
             normalizer = new Normalizer(normalizationTable);
-            documents = new Dictionary<string, List<string>>();
+            stopWordsFilter = new StopWordsFilter(new HashSet<string>(stopWords), normalizer);
+            documents = new Dictionary<string, Document>();
         }
 
         private IEnumerable<string> GetWords(string text)
         {
-            //TODO: сделать через регул€рку \w+. ѕотому что скорее всего не все случаии разобраны.
-            var splitSymbols = text
-                .Where(character => char.IsPunctuation(character) || character == ' ' || char.IsControl(character))
-                .Distinct()
-                .ToArray();
-            return text.Split(splitSymbols, StringSplitOptions.RemoveEmptyEntries)
-                .Select(word => word.Trim(' '))
-                .Where(word => word != "");
+            var matches = Regex.Matches(text, @"\w+");
+            return matches.Cast<Match>().Select(match => match.Value);
         }
 
-        private List<string> GetAllowedNormalizedWords(string text)
+        //Ќадо декомпозировать на несколько методов
+        private IEnumerable<string> GetAllowedNormalizedSortedWords(string text)
         {
-            var words = GetWords(text);
-            words = stopWordsFilter.Filter(words);
-            words = normalizer.Filter(words);
             return GetWords(text)
-                .Select()
-                .Where(word => !stopWords.Contains(word))
-                .Select(word => Normalize(word))
-                .Select(word => word.ToLowerInvariant())
+                .Where(stopWordsFilter.IsAllowedWord)
+                .Select(word => normalizer.Normalize(word))
                 .OrderBy(word => word)
                 .ToList();
         }
@@ -161,18 +251,8 @@ namespace BFTIndex
         {
             if (text.Length == 0)
                 return;
-            var words = GetAllowedNormalizedWords(text);
-            if (documents.ContainsKey(documentId))
-            {
-                //TODO: —делать merge за O(n)
-                documents[documentId].AddRange(words);
-                documents.OrderBy(word => word).ToList();
-            }
-            else
-            {
-                documents[documentId] = new List<string>();
-                documents[documentId].AddRange(words);
-            }
+            var words = GetAllowedNormalizedSortedWords(text);
+            documents[documentId] = new Document(words);
         }
 
         public void Remove(string documentId)
@@ -180,12 +260,30 @@ namespace BFTIndex
             documents.Remove(documentId);
         }
 
+        private double TFIDF(IEnumerable<string> words, Document doc)
+        {
+            var TFIDFEvaluator = new TFIDF(documents, doc);
+            return words
+                .Select(word => TFIDFEvaluator.Evaluate(word))
+                .Sum();
+        }
+
         public MatchedDocument[] Search(string query)
         {
-            var queryWords = GetAllowedNormalizedWords(query);
-            return documents
-                .Where(doc => queryWords.All(word => doc.Value.Contains(word)))
-                .Select(doc => new MatchedDocument(doc.Key, 0))
+            var queryWords = GetAllowedNormalizedSortedWords(query);
+            if (!queryWords.Any())
+                return new MatchedDocument[0];
+
+            var documentsWithQueryWords = documents
+                .Where(doc => queryWords.All(queryWord => doc.Value.Contains(queryWord)));
+
+            var tfidf = documentsWithQueryWords
+                .Select(doc => TFIDF(queryWords, doc.Value))
+                .Sum();
+
+            return documentsWithQueryWords
+                .Select(doc => new MatchedDocument(doc.Key, tfidf))
+                .OrderBy(doc => doc.Weight)
                 .ToArray();
         }
     }
