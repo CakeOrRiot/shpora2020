@@ -47,6 +47,7 @@
   <ItemGroup>
     <Compile Include="Contracts\Book.cs" />
     <Compile Include="Contracts\DbEntity.cs" />
+    <Compile Include="Tests\DataContextTests.cs" />
     <Compile Include="Tests\DbEngineTests.cs" />
     <Compile Include="DataContext.cs" />
     <Compile Include="IDataContext.cs" />
