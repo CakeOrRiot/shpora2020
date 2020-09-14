@@ -35,10 +35,9 @@ namespace ORM.Tests
             Assert.AreEqual(expected, sut.Execute(query));
         }
 
-        [TestCase("get Id=1;", ";")]
         [TestCase("add Id=1,=V1;get Id=1;", "ok;Id=1,=V1;")]
         [TestCase("add Id=1,=V1;upd Id=1,=V2;get Id=1;", "ok;ok;Id=1,=V2;")]
-        public void AnyCommand_KeyCanBeEmpty(string query, string expected)
+        public void AnyCommand_FieldNameCanBeEmpty(string query, string expected)
         {
             Assert.AreEqual(expected, sut.Execute(query));
         }
@@ -46,7 +45,7 @@ namespace ORM.Tests
         [TestCase("get Id=;", ";")]
         [TestCase("add Id=,F1=V1;get Id=;", "ok;Id=,F1=V1;")]
         [TestCase("add Id=,F1=V1;upd Id=,F1=V2;get Id=;", "ok;ok;Id=,F1=V2;")]
-        public void AnyCommand_ValueCanBeEmpty(string query, string expected)
+        public void AnyCommand_FieldValueCanBeEmpty(string query, string expected)
         {
             Assert.AreEqual(expected, sut.Execute(query));
         }
@@ -55,7 +54,7 @@ namespace ORM.Tests
         [TestCase("add Id=1,F;1=V1;", "err syntax;")]
         [TestCase("upd Id=1,F,1=V1;", "err syntax;")]
         [TestCase("upd Id=1,F;1=V1;", "err syntax;")]
-        public void AnyCommand_KeyWithControlChars_SyntaxError(string query, string expected)
+        public void AnyCommand_FieldNameWithControlChars_SyntaxError(string query, string expected)
         {
             Assert.AreEqual(expected, sut.Execute(query));
         }
@@ -69,7 +68,7 @@ namespace ORM.Tests
         [TestCase("upd Id=1,F1=V,1;", "err syntax;")]
         [TestCase("upd Id=1,F1=V;1;", "err syntax;")]
         [TestCase("upd Id=1,F1=V=1;", "err syntax;")]
-        public void AnyCommand_ValueWithControlChars_SyntaxError(string query, string expected)
+        public void AnyCommand_FieldValueWithControlChars_SyntaxError(string query, string expected)
         {
             Assert.AreEqual(expected, sut.Execute(query));
         }
@@ -158,6 +157,12 @@ namespace ORM.Tests
                                          "Id=1,F2=V2,F3=V3,F1=V1;",
                                          "Id=1,F3=V3,F1=V1,F2=V2;",
                                          "Id=1,F3=V3,F2=V2,F1=V1;"));
+        }
+
+        [TestCase("add Id=1;get Id=1;", "ok;Id=1;")]
+        public void Get_EntityWithOnlyId_ReturnsCorrectEntity(string query, string expected)
+        {
+            Assert.AreEqual(expected, sut.Execute(query));
         }
 
         [Test]
