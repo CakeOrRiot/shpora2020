@@ -152,6 +152,11 @@ namespace BFTIndex
             var matches = Regex.Matches(text, @"^(?!.*not[\W+]\w+).*$");
             return matches.Cast<Match>().Select(match => match.Value);
         }
+
+        public IEnumerable<string> GetAllNotWords(string text)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     public class FullTextIndex : IFullTextIndex
@@ -178,10 +183,9 @@ namespace BFTIndex
 
 
         //Надо декомпозировать на несколько методов
-        private IEnumerable<string> GetAllowedNormalizedSortedWords(string text)
+        private IEnumerable<string> GetAllowedNormalizedSortedWords(IEnumerable<string> text)
         {
-            //var words = parser.GetAllWords(text);
-            return parser.GetAllWords(text)
+            return text
                 .Where(stopWordsFilter.IsAllowedWord)
                 .Select(word => normalizer.Normalize(word))
                 .ToList();
@@ -191,7 +195,7 @@ namespace BFTIndex
         {
             if (text.Length == 0)
                 return;
-            var words = GetAllowedNormalizedSortedWords(text);
+            var words = GetAllowedNormalizedSortedWords(parser.GetAllWords(text));
             documents[documentId] = new Document(words);
         }
 
@@ -210,9 +214,10 @@ namespace BFTIndex
 
         public MatchedDocument[] Search(string query)
         {
-            var queryWords = GetAllowedNormalizedSortedWords(query);
+            var queryWords = GetAllowedNormalizedSortedWords(parser.GetAllAllowedWords(query));
             if (!queryWords.Any())
                 return new MatchedDocument[0];
+            var queryNotWords = GetAllowedNormalizedSortedWords(parser.GetAllNotWords(query));
 
             var documentsWithQueryWords = documents
                 .Where(doc => queryWords.All(queryWord => doc.Value.Contains(queryWord)));
