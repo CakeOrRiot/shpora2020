@@ -17,8 +17,6 @@ namespace ORM.Tests
             dataContext = new DataContext(new Db.DbEngine());
         }
 
-
-
         [Test]
         public void FindExistingItem()
         {
@@ -28,14 +26,47 @@ namespace ORM.Tests
             dataContext.SubmitChanges();
             Assert.AreEqual(obj, dataContext.Find("1"));
         }
+
         [Test]
         public void FindNotExistingItem()
         {
-            var obj = new Contracts.Book();
-            obj.Id = "2";
+            var obj = new Contracts.Book
+            {
+                Id = "2"
+            };
             dataContext.Insert(obj);
             dataContext.SubmitChanges();
             Assert.AreEqual(null, dataContext.Find("1"));
+        }
+
+        [Test]
+        public void FindWithEscapeSymbols()
+        {
+            var obj = new Contracts.Book
+            {
+                Id = "1",
+                Title = @"df\,\;",
+                Author = @"fdfas"
+            };
+            dataContext.Insert(obj);
+            dataContext.SubmitChanges();
+            Assert.AreEqual(obj, dataContext.Find("1"));
+        }
+
+        [Test]
+        public void SubmitChangesInsertingBookBecameUpdateable()
+        {
+            var obj = new Contracts.Book
+            {
+                Id = "1",
+                Title = @"df",
+                Author = @"fdfas"
+            };
+            dataContext.Insert(obj);
+            obj.Author = "dsa";
+            dataContext.SubmitChanges();
+            obj.Author = "dsb";
+            Assert.AreEqual(obj, dataContext.Find("1"));
         }
     }
 }

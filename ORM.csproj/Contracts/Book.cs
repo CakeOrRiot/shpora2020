@@ -23,21 +23,12 @@ namespace ORM.Contracts
             {
                 var objProperty = Convert.ChangeType(property.GetValue(book), property.PropertyType);
                 var thisProperty = Convert.ChangeType(property.GetValue(this), property.PropertyType);
-                if (!objProperty.Equals(thisProperty))
+                if (objProperty is null && thisProperty is null)
+                    continue;
+                if (objProperty is null || thisProperty is null || !objProperty.Equals(thisProperty))
                     return false;
             }
             return true;
-        }
-
-        public override int GetHashCode()
-        {
-            int hashCode = -1315566232;
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Title);
-            hashCode = hashCode * -1521134295 + Price.GetHashCode();
-            hashCode = hashCode * -1521134295 + Weight.GetHashCode();
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Author);
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Skill);
-            return hashCode;
         }
     }
 }
