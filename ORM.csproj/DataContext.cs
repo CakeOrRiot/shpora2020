@@ -13,8 +13,10 @@ namespace ORM
 {
     public interface ISerializer<T> where T : DbEntity, new()
     {
-        string Serialize(T obj);
+        string Serialize(T obj, T originalObj = null);
         T Deserialize(string dbAnswer);
+        string RemoveEscapeSymbols(string str);
+        string AddEscapeSymbols(string str);
     }
 
     public interface ITracker<T>
@@ -68,7 +70,7 @@ namespace ORM
             {
                 property.SetValue(copy, property.GetValue(obj));
             }
-            return copy;//----------------------------------------------------COPY
+            return copy;
         }
     }
     public class Cash<T>
@@ -123,36 +125,105 @@ namespace ORM
         }
     }
 
+    public static class StringExtensions
+    {
+        public static IEnumerable<string> Tokenize(this string input, char separator, char escape)
+        {
+            return input.Tokenize(new char[] { separator }, escape);
+        }
+        public static IEnumerable<string> Tokenize(this string input, char[] separators, char escape)
+        {
+            if (input == null) yield break;
+            var buffer = new StringBuilder();
+            bool escaping = false;
+            foreach (char ch in input)
+            {
+                if (escaping)
+                {
+                    buffer.Append(ch);
+                    escaping = false;
+                }
+                else if (ch == escape)
+                {
+                    buffer.Append(ch);
+                    escaping = true;
+                }
+                else if (separators.Contains(ch))
+                {
+                    yield return buffer.Flush();
+                }
+                else
+                {
+                    buffer.Append(ch);
+                }
+            }
+            if (buffer.Length > 0 || separators.Contains(input[input.Length - 1]))
+                yield return buffer.Flush();
+        }
+
+
+    }
+
+    static class StringBuilderExtensions
+    {
+        public static string Flush(this StringBuilder stringBuilder)
+        {
+            string result = stringBuilder.ToString();
+            stringBuilder.Clear();
+            return result;
+        }
+    }
+
     public class Serializer<T> : ISerializer<T>
         where T : DbEntity, new()
     {
+        //public readonly char[] escapeSymbols = { ';', ',', '\\', '=' };
         public T Deserialize(string dbAnswer)
         {
             var obj = new T();
             var type = typeof(Book);
-            //var fieldsData = Regex.Split(dbAnswer, @"([^\\])([,;])");
-            //var fieldsData = Regex.Split(dbAnswer, @"[\;\,]").Where(field => field != "");
-            var fieldsData = dbAnswer.Split(new char[] { ',', ';' },
-                StringSplitOptions.RemoveEmptyEntries);
-            foreach (var field in fieldsData)
+            var fields = dbAnswer.Tokenize(new char[] { ',', ';' }, '\\')// Regex.Split(dbAnswer, @"(?<=[^\\(\\\\)](?:[,;]))")
+                 .Where(field => field != "");
+            foreach (var field in fields)
             {
-                var propertyName = field.Substring(0, field.IndexOf('='));
-                var propertyValue = field.Substring(field.IndexOf('=') + 1);
+                var tokens = field.Tokenize('=', '\\').ToList();
+                var propertyName = tokens[0];
+                var propertyValue = tokens[1];
+                propertyValue = RemoveEscapeSymbols(propertyValue);
                 var property = type.GetProperty(propertyName);
                 property.SetValue(obj, Convert.ChangeType(propertyValue, property.PropertyType));
             }
             return obj;
         }
 
-        public string Serialize(T obj)
+        public string RemoveEscapeSymbols(string str)
         {
+            return Regex.Replace(str, @"\\(.)", "$1"); //Regex.Unescape(str); //
+        }
+        public string AddEscapeSymbols(string str)
+        {
+            return Regex.Replace(str, @"([\\;,=])", @"\$1");
+        }
+
+        public string Serialize(T currentObj, T originalObj = null)
+        {
+            if (originalObj is null)
+                originalObj = new T();
+
             var result = new StringBuilder();
-            result.Append($"Id={obj.Id}");
-            var type = typeof(T);
+            result.Append($"Id={currentObj.Id}");
+            var type = originalObj.GetType();
             foreach (var property in type.GetProperties())
             {
-                if (property.Name != "Id")
-                    result.Append($",{property.Name}={property.GetValue(obj)}");
+                if (property.Name != "Id" && property.GetValue(originalObj) != property.GetValue(currentObj))
+                {
+                    result.Append(",");
+                    var currentValue = property.GetValue(currentObj);
+                    if (currentValue is null)
+                        result.Append($"{property.Name}=");
+                    else
+                        result.Append($"{property.Name}={AddEscapeSymbols(currentValue.ToString())}");
+                }
             }
             result.Append(";");
             return result.ToString();
@@ -165,6 +236,7 @@ namespace ORM
         private Cash<Book> updateCash;
         private readonly ISerializer<Book> serializer;
         private readonly string emptyAnswer = ";";
+        private readonly string[] dbErrors = { "err already_exists", "err doenst_exists", "err syntax" };
         public DataContext(IDbEngine dbEngine)
         {
             this.dbEngine = dbEngine;
@@ -178,6 +250,8 @@ namespace ORM
             if (updateCash.Contains(id))
                 return updateCash[id];
             var dbAnswer = dbEngine.Execute($"get Id={id};");
+            //Console.WriteLine($"Find: {dbAnswer}");
+            //dbAnswer = serializer.RemoveEscapeSymbols(dbAnswer);
             if (dbAnswer == emptyAnswer)
                 return null;
             var obj = serializer.Deserialize(dbAnswer);
@@ -190,6 +264,8 @@ namespace ORM
             if (updateCash.Contains(id))
                 return updateCash[id];
             var dbAnswer = dbEngine.Execute($"get Id={id};");
+            //Console.WriteLine($"Read: {dbAnswer}");
+            //dbAnswer = serializer.RemoveEscapeSymbols(dbAnswer);
             if (dbAnswer == emptyAnswer)
                 throw new Exception($"Id={id} not found");
             var obj = serializer.Deserialize(dbAnswer);
@@ -201,6 +277,7 @@ namespace ORM
         {
             if (entity is null)
                 throw new NullReferenceException("Entity is null");
+            //Console.WriteLine($"Insert: {entity}");
             insertCash.Add(entity.Id, entity);
         }
 
@@ -211,18 +288,8 @@ namespace ORM
             {
                 query.Append("upd ");
                 var currentObj = updateCash[key];
-                var originalObj = updateCash.tracker[currentObj];
-                var type = originalObj.GetType();
-                query.Append($"Id={currentObj.Id}");
-                foreach (var property in type.GetProperties())
-                {
-                    if (property.Name != "Id" && property.GetValue(originalObj) != property.GetValue(currentObj))
-                    {
-                        query.Append(",");
-                        query.Append($"{property.Name}={property.GetValue(currentObj)}");
-                    }
-                }
-                query.Append(";");
+                query.Append(serializer.Serialize(currentObj));
+
             }
             return query;
         }
@@ -234,29 +301,19 @@ namespace ORM
             {
                 var currentObj = insertCash[key];
                 query.Append("add ");
-                query.Append($"Id={currentObj.Id}");
-                var type = currentObj.GetType();
-                var emptyObj = new Book();
-                foreach (var property in type.GetProperties())
-                {
-                    if (property.Name != "Id" && property.GetValue(currentObj) != property.GetValue(emptyObj))
-                    {
-                        query.Append(",");
-                        query.Append($"{property.Name}={property.GetValue(currentObj)}");
-                    }
-                }
-                query.Append(";");
+                query.Append(serializer.Serialize(currentObj));
             }
             return query;
         }
 
         public void SubmitChanges()
         {
+            //Console.WriteLine($"Submit");
             var query = GetAddQuery().Append(GetUpdateQuery());
-            updateCash.Add(insertCash); //= new Cash<Book>(insertCash);
+            updateCash.Add(insertCash);
             insertCash = new Cash<Book>();
             var dbAnswer = dbEngine.Execute(query.ToString());
-            if (dbAnswer.Contains("err already_exists") || dbAnswer.Contains("err doenst_exists"))
+            if (dbErrors.Any(error => dbAnswer.Contains(error)))
                 throw new Exception("Data base error");
         }
     }
