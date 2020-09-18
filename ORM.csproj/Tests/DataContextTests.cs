@@ -101,5 +101,7 @@ namespace ORM.Tests
             obj.Author = "dsb";
             Assert.AreEqual(obj, dataContext.Find("1"));
         }
+
+        
     }
 }

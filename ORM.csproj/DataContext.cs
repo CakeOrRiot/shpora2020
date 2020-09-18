@@ -131,9 +131,11 @@ namespace ORM
         {
             return input.Tokenize(new char[] { separator }, escape);
         }
+
         public static IEnumerable<string> Tokenize(this string input, char[] separators, char escape)
         {
-            if (input == null) yield break;
+            if (input == null)
+                yield break;
             var buffer = new StringBuilder();
             bool escaping = false;
             foreach (char ch in input)
@@ -149,19 +151,13 @@ namespace ORM
                     escaping = true;
                 }
                 else if (separators.Contains(ch))
-                {
                     yield return buffer.Flush();
-                }
                 else
-                {
                     buffer.Append(ch);
-                }
             }
             if (buffer.Length > 0 || separators.Contains(input[input.Length - 1]))
                 yield return buffer.Flush();
         }
-
-
     }
 
     static class StringBuilderExtensions
@@ -177,12 +173,11 @@ namespace ORM
     public class Serializer<T> : ISerializer<T>
         where T : DbEntity, new()
     {
-        //public readonly char[] escapeSymbols = { ';', ',', '\\', '=' };
         public T Deserialize(string dbAnswer)
         {
             var obj = new T();
             var type = typeof(Book);
-            var fields = dbAnswer.Tokenize(new char[] { ',', ';' }, '\\')// Regex.Split(dbAnswer, @"(?<=[^\\(\\\\)](?:[,;]))")
+            var fields = dbAnswer.Tokenize(new char[] { ',', ';' }, '\\')
                  .Where(field => field != "");
             foreach (var field in fields)
             {
@@ -198,7 +193,7 @@ namespace ORM
 
         public string RemoveEscapeSymbols(string str)
         {
-            return Regex.Replace(str, @"\\(.)", "$1"); //Regex.Unescape(str); //
+            return Regex.Replace(str, @"\\(.)", "$1");
         }
         public string AddEscapeSymbols(string str)
         {
@@ -215,86 +210,32 @@ namespace ORM
             var type = originalObj.GetType();
             foreach (var property in type.GetProperties())
             {
-                if (property.Name != "Id" && property.GetValue(originalObj) != property.GetValue(currentObj))
-                {
-                    result.Append(",");
-                    var currentValue = property.GetValue(currentObj);
-                    if (currentValue is null)
-                        result.Append($"{property.Name}=");
-                    else
-                        result.Append($"{property.Name}={AddEscapeSymbols(currentValue.ToString())}");
-                }
+                var currentValue = property.GetValue(currentObj);
+                var originalValue = property.GetValue(originalObj);
+                if (property.Name == "Id")
+                    continue;
+
+                if (currentValue is null && !(originalValue is null))
+                    result.Append($",{property.Name}={AddEscapeSymbols(currentValue.ToString())}");
+                else if (!(currentValue is null) && !currentValue.Equals(originalValue))
+                    result.Append($",{property.Name}={AddEscapeSymbols(currentValue.ToString())}");
             }
             result.Append(";");
             return result.ToString();
         }
     }
-    public class DataContext : IDataContext
+
+    public interface IQueryGenerator<T>
+        where T : DbEntity, new()
     {
-        private readonly IDbEngine dbEngine;
-        private Cash<Book> insertCash;
-        private Cash<Book> updateCash;
-        private readonly ISerializer<Book> serializer;
-        private readonly string emptyAnswer = ";";
-        private readonly string[] dbErrors = { "err already_exists", "err doenst_exists", "err syntax" };
-        public DataContext(IDbEngine dbEngine)
-        {
-            this.dbEngine = dbEngine;
-            insertCash = new Cash<Book>();
-            updateCash = new Cash<Book>();
-            serializer = new Serializer<Book>();
-        }
+        StringBuilder GetAddQuery(Cash<T> insertCash, ISerializer<T> serializer);
+        StringBuilder GetUpdateQuery(Cash<T> updateCash, ISerializer<T> serializer);
+    }
 
-        public Book Find(string id)
-        {
-            if (updateCash.Contains(id))
-                return updateCash[id];
-            var dbAnswer = dbEngine.Execute($"get Id={id};");
-            //Console.WriteLine($"Find: {dbAnswer}");
-            //dbAnswer = serializer.RemoveEscapeSymbols(dbAnswer);
-            if (dbAnswer == emptyAnswer)
-                return null;
-            var obj = serializer.Deserialize(dbAnswer);
-            updateCash.Add(obj.Id, obj);
-            return obj;
-        }
-
-        public Book Read(string id)
-        {
-            if (updateCash.Contains(id))
-                return updateCash[id];
-            var dbAnswer = dbEngine.Execute($"get Id={id};");
-            //Console.WriteLine($"Read: {dbAnswer}");
-            //dbAnswer = serializer.RemoveEscapeSymbols(dbAnswer);
-            if (dbAnswer == emptyAnswer)
-                throw new Exception($"Id={id} not found");
-            var obj = serializer.Deserialize(dbAnswer);
-            updateCash.Add(obj.Id, obj);
-            return obj;
-        }
-
-        public void Insert(Book entity)
-        {
-            if (entity is null)
-                throw new NullReferenceException("Entity is null");
-            //Console.WriteLine($"Insert: {entity}");
-            insertCash.Add(entity.Id, entity);
-        }
-
-        private StringBuilder GetUpdateQuery()
-        {
-            var query = new StringBuilder();
-            foreach (var key in updateCash.Keys)
-            {
-                query.Append("upd ");
-                var currentObj = updateCash[key];
-                query.Append(serializer.Serialize(currentObj));
-
-            }
-            return query;
-        }
-
-        private StringBuilder GetAddQuery()
+    public class QueryGenerator<T> : IQueryGenerator<T>
+        where T : DbEntity, new()
+    {
+        public StringBuilder GetAddQuery(Cash<T> insertCash, ISerializer<T> serializer)
         {
             var query = new StringBuilder();
             foreach (var key in insertCash.Keys)
@@ -306,10 +247,73 @@ namespace ORM
             return query;
         }
 
+        public StringBuilder GetUpdateQuery(Cash<T> updateCash, ISerializer<T> serializer)
+        {
+            var query = new StringBuilder();
+            foreach (var key in updateCash.Keys)
+            {
+                query.Append("upd ");
+                var currentObj = updateCash[key];
+                query.Append(serializer.Serialize(currentObj, updateCash.tracker[currentObj]));
+            }
+            return query;
+        }
+    }
+
+    public class DataContext : IDataContext
+    {
+        private readonly IDbEngine dbEngine;
+        private Cash<Book> insertCash;
+        private Cash<Book> updateCash;
+        private readonly ISerializer<Book> serializer;
+        private readonly string notFound = ";";
+        private readonly string[] dbErrors = { "err already_exists", "err doenst_exists", "err syntax" };
+        private readonly IQueryGenerator<Book> queryGenerator;
+        public DataContext(IDbEngine dbEngine)
+        {
+            this.dbEngine = dbEngine;
+            insertCash = new Cash<Book>();
+            updateCash = new Cash<Book>();
+            serializer = new Serializer<Book>();
+            queryGenerator = new QueryGenerator<Book>();
+        }
+
+        public Book Find(string id)
+        {
+            if (updateCash.Contains(id))
+                return updateCash[id];
+            var dbAnswer = dbEngine.Execute($"get Id={id};");
+            if (dbAnswer == notFound)
+                return null;
+            var obj = serializer.Deserialize(dbAnswer);
+            updateCash.Add(obj.Id, obj);
+            return obj;
+        }
+
+        public Book Read(string id)
+        {
+            if (updateCash.Contains(id))
+                return updateCash[id];
+            var dbAnswer = dbEngine.Execute($"get Id={id};");
+            if (dbAnswer == notFound)
+                throw new Exception($"Id={id} not found");
+            var obj = serializer.Deserialize(dbAnswer);
+            updateCash.Add(obj.Id, obj);
+            return obj;
+        }
+
+        public void Insert(Book entity)
+        {
+            if (entity is null)
+                throw new NullReferenceException("Entity is null");
+            insertCash.Add(entity.Id, entity);
+        }
+
         public void SubmitChanges()
         {
-            //Console.WriteLine($"Submit");
-            var query = GetAddQuery().Append(GetUpdateQuery());
+            var addQuery = queryGenerator.GetAddQuery(insertCash, serializer);
+            var updateQuery = queryGenerator.GetUpdateQuery(updateCash, serializer);
+            var query = addQuery.Append(updateQuery);
             updateCash.Add(insertCash);
             insertCash = new Cash<Book>();
             var dbAnswer = dbEngine.Execute(query.ToString());

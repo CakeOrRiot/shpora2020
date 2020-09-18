@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using ORM.Contracts;
+using ORM.Db;
 
 namespace ORM.Tests
 {
@@ -26,7 +27,7 @@ namespace ORM.Tests
         [Test]
         public void EscapeSymbols()
         {
-            var obj = new Contracts.Book
+            var obj = new Book
             {
                 Id = "1",
                 Title = @"Fighters\,Guild\; History\, 1st\= Ed\\",
@@ -36,6 +37,37 @@ namespace ORM.Tests
                 Skill = "Heavy Armor"
             };
             TestInverse(obj);
+        }
+
+        [Test]
+        public void OptimizationDefaultValueTest()
+        {
+            var obj = new Book
+            {
+                Id = "1",
+                Title = @"df",
+                Author = @"fdfas",
+                Price = 0
+            };
+            Assert.AreEqual("Id=1,Title=df,Author=fdfas;", serializer.Serialize(obj));
+        }
+
+        [Test]
+        public void OptimizationUpdateTest()
+        {
+            var obj = new Book
+            {
+                Id = "1",
+                Title = @"df",
+                Author = @"fdfas",
+                Price = 0
+            };
+            var dbContext = new DataContext(new DbEngine());
+            dbContext.Insert(obj);
+            dbContext.SubmitChanges();
+            dbContext.Insert(new Book() { Id = "2" });
+            dbContext.SubmitChanges();
+            Assert.AreEqual("Id=1;", serializer.Serialize(obj));
         }
     }
 }
