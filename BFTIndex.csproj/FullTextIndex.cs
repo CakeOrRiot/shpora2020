@@ -101,7 +101,7 @@ namespace BFTIndex
 
         public double Evaluate(string word)
         {
-            return (double)document.Count(word) / document.Length;
+            return (double)document.wordFrequency[word] / document.Length;
         }
     }
 
@@ -129,11 +129,23 @@ namespace BFTIndex
         public double Weight { get; private set; }
         public int Length => words.Count;
 
+        public Dictionary<string, int> wordFrequency;
+
         public Document(IEnumerable<string> words)
         {
             this.words = words.ToList();
+            wordFrequency = new Dictionary<string, int>();
+            CountFrequencies();
         }
 
+        private void CountFrequencies()
+        {
+            foreach (var word in words)
+            {
+                if (!wordFrequency.ContainsKey(word))
+                    wordFrequency[word] = words.Count(other => other == word);
+            }
+        }
         public bool Contains(string word)
         {
             return words.Contains(word);
@@ -164,16 +176,14 @@ namespace BFTIndex
         {
             get => words[index];
         }
-
     }
-
 
     public interface ITextParser
     {
         IEnumerable<string> GetAllWords(string text);
-        IEnumerable<string> GetAllAllowedWords(string text);
         IEnumerable<string> GetAllNotWords(string text);
         IEnumerable<string> GetAllPhrases(string text);
+        string RemoveDelimeters(string text);
     }
 
     public class TextParser : ITextParser
@@ -181,13 +191,6 @@ namespace BFTIndex
         public IEnumerable<string> GetAllWords(string text)
         {
             var matches = Regex.Matches(text, @"\w+");
-            return matches.Cast<Match>().Select(match => match.Value);
-        }
-
-        public IEnumerable<string> GetAllAllowedWords(string text)
-        {
-            throw new NotImplementedException();
-            var matches = Regex.Matches(text, @"^(?!.*not[\W+]\w+).*$");
             return matches.Cast<Match>().Select(match => match.Value);
         }
 
@@ -215,7 +218,7 @@ namespace BFTIndex
         private Dictionary<string, Document> documents;
         private readonly IStopWordsFilter stopWordsFilter;
         private readonly INormalizer normalizer;
-        private readonly TextParser parser;
+        private readonly ITextParser parser;
         public FullTextIndex()
         {
             stopWordsFilter = new StopWordsFilter();
@@ -272,10 +275,9 @@ namespace BFTIndex
             var queryPhrases = GetAllowedNormalizedWords(parser.GetAllPhrases(query))
                 .Select(parser.RemoveDelimeters)
                 .Select(phrase => GetAllowedNormalizedWords(parser.GetAllWords(phrase)));
-            ;
+            
             if (!queryWords.Any() && !queryPhrases.Any())
                 return new MatchedDocument[0];
-            //var l = queryPhrases.ToList();
 
             var matchedDocuments = documents
                 .Where(doc => queryWords.All(doc.Value.Contains) &&
@@ -284,7 +286,6 @@ namespace BFTIndex
 
             return matchedDocuments
                 .Select(doc => new MatchedDocument(doc.Key, TFIDF(queryWords, doc.Value)))
-                //.OrderBy(doc => doc.Weight)
                 .ToArray();
         }
     }

@@ -43,12 +43,5 @@ namespace BFTIndex.Tests
             Assert.AreEqual(new HashSet<string>() { "print,,open;;; door", "apple" },
                 parser.GetAllPhrases(query).ToHashSet<string>());
         }
-
-        [TestCase("word \"print,,open;;; door\" another,. \"apple\" \"")]
-        public void GetAllPhrasesAdditionalQuote(string query)
-        {
-            Assert.AreEqual(new HashSet<string>(), null);
-        }
-
     }
 }
