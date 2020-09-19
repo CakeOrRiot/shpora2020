@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using BFTIndex.Models;
+using NUnit.Framework;
 
 namespace BFTIndex
 {
@@ -151,20 +153,27 @@ namespace BFTIndex
             return words.Contains(word);
         }
 
-        //Можно за O(|words|+|phrase|) сделать. Поиск подстроки в строке.
         public bool Contains(IEnumerable<string> phrase)
         {
+            var wordsPosition = 0;
+            var phrasePosition = 0;
             var phraseList = phrase.ToList();
-            var queue = new Queue<string>(words.Take(phraseList.Count));
-            foreach (var word in words.Skip(phraseList.Count))
+            while (wordsPosition < words.Count && phrasePosition < phraseList.Count)
             {
-                if (queue.ToList().SequenceEqual(phraseList))
-                    return true;
-                queue.Dequeue();
-                queue.Enqueue(word);
+                if (words[wordsPosition] == phraseList[phrasePosition])
+                {
+                    wordsPosition++;
+                    phrasePosition++;
+                    if (phrasePosition == phraseList.Count)
+                        return true;
+                }
+                else
+                {
+                    wordsPosition = wordsPosition - phrasePosition + 1;
+                    phrasePosition = 0;
+                }
             }
-
-            return queue.ToList().SequenceEqual(phraseList);
+            return false;
         }
 
         public int Count(string word)
@@ -275,7 +284,7 @@ namespace BFTIndex
             var queryPhrases = GetAllowedNormalizedWords(parser.GetAllPhrases(query))
                 .Select(parser.RemoveDelimeters)
                 .Select(phrase => GetAllowedNormalizedWords(parser.GetAllWords(phrase)));
-            
+
             if (!queryWords.Any() && !queryPhrases.Any())
                 return new MatchedDocument[0];
 
