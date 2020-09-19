@@ -6,7 +6,13 @@ using BFTIndex.Models;
 
 namespace BFTIndex
 {
-    public class Normalizer
+    public interface INormalizer
+    {
+        string Normalize(string word);
+        char Normalize(char ch);
+    }
+
+    public class Normalizer : INormalizer
     {
         public readonly Dictionary<char, char> normalizationTable;
         public Normalizer()
@@ -22,7 +28,7 @@ namespace BFTIndex
                 .ToDictionary(charPair => charPair.Key, charPair => charPair.Value);
         }
 
-        public char NormalizeChar(char ch)
+        public char Normalize(char ch)
         {
             ch = char.ToLowerInvariant(ch);
             if (normalizationTable.ContainsKey(ch))
@@ -33,22 +39,27 @@ namespace BFTIndex
         public string Normalize(string word)
         {
             return new string(word
-                .Select(NormalizeChar)
+                .Select(Normalize)
                 .ToArray())
                 .ToLowerInvariant();
         }
     }
 
-    public class StopWordsFilter
+    public interface IStopWordsFilter
+    {
+        bool IsAllowedWord(string word);
+    }
+
+    public class StopWordsFilter : IStopWordsFilter
     {
         public readonly HashSet<string> stopWords;
-        private readonly Normalizer normalizer;
+        private readonly INormalizer normalizer;
         public StopWordsFilter()
         {
             stopWords = new HashSet<string>();
             normalizer = new Normalizer();
         }
-        public StopWordsFilter(HashSet<string> stopWords, Normalizer normalizer)
+        public StopWordsFilter(HashSet<string> stopWords, INormalizer normalizer)
         {
             this.normalizer = normalizer;
             this.stopWords = stopWords.Select(normalizer.Normalize).ToHashSet();
@@ -139,7 +150,15 @@ namespace BFTIndex
 
     }
 
-    public class QueryParser
+
+    public interface ITextParser
+    {
+        IEnumerable<string> GetAllWords(string text);
+        IEnumerable<string> GetAllAllowedWords(string text);
+        IEnumerable<string> GetAllNotWords(string text);
+    }
+
+    public class TextParser : ITextParser
     {
         public IEnumerable<string> GetAllWords(string text)
         {
@@ -155,35 +174,33 @@ namespace BFTIndex
 
         public IEnumerable<string> GetAllNotWords(string text)
         {
-            throw new NotImplementedException();
+            var matches = Regex.Matches(text, @"(not )+(\w+)");
+            return matches.Cast<Match>().Select(match => match.Groups[2].ToString());
         }
     }
 
     public class FullTextIndex : IFullTextIndex
     {
         private Dictionary<string, Document> documents;
-        private readonly StopWordsFilter stopWordsFilter;
-        private readonly Normalizer normalizer;
-        private readonly QueryParser parser;
+        private readonly IStopWordsFilter stopWordsFilter;
+        private readonly INormalizer normalizer;
+        private readonly TextParser parser;
         public FullTextIndex()
         {
             stopWordsFilter = new StopWordsFilter();
             normalizer = new Normalizer();
             documents = new Dictionary<string, Document>();
-            parser = new QueryParser();
+            parser = new TextParser();
         }
         public FullTextIndex(string[] stopWords, Dictionary<char, char> normalizationTable)
         {
             normalizer = new Normalizer(normalizationTable);
             stopWordsFilter = new StopWordsFilter(new HashSet<string>(stopWords), normalizer);
             documents = new Dictionary<string, Document>();
-            parser = new QueryParser();
+            parser = new TextParser();
         }
 
-
-
-        //Надо декомпозировать на несколько методов
-        private IEnumerable<string> GetAllowedNormalizedSortedWords(IEnumerable<string> text)
+        private IEnumerable<string> GetAllowedNormalizedWords(IEnumerable<string> text)
         {
             return text
                 .Where(stopWordsFilter.IsAllowedWord)
@@ -195,7 +212,7 @@ namespace BFTIndex
         {
             if (text.Length == 0)
                 return;
-            var words = GetAllowedNormalizedSortedWords(parser.GetAllWords(text));
+            var words = GetAllowedNormalizedWords(parser.GetAllWords(text));
             documents[documentId] = new Document(words);
         }
 
@@ -214,17 +231,22 @@ namespace BFTIndex
 
         public MatchedDocument[] Search(string query)
         {
-            var queryWords = GetAllowedNormalizedSortedWords(parser.GetAllAllowedWords(query));
+            var queryNotWords = GetAllowedNormalizedWords(parser.GetAllNotWords(query)).ToHashSet<string>();
+            queryNotWords.Add("not");
+            var queryWords = parser.GetAllWords(query)
+                .Where(word => !queryNotWords.Contains(word));
+            queryWords = GetAllowedNormalizedWords(queryWords);
+
             if (!queryWords.Any())
                 return new MatchedDocument[0];
-            var queryNotWords = GetAllowedNormalizedSortedWords(parser.GetAllNotWords(query));
 
-            var documentsWithQueryWords = documents
-                .Where(doc => queryWords.All(queryWord => doc.Value.Contains(queryWord)));
+            var matchedDocuments = documents
+                .Where(doc => queryWords.All(doc.Value.Contains) && 
+                       queryNotWords.All(word => !doc.Value.Contains(word)));
 
-            return documentsWithQueryWords
+            return matchedDocuments
                 .Select(doc => new MatchedDocument(doc.Key, TFIDF(queryWords, doc.Value)))
-                .OrderBy(doc => doc.Weight)
+                //.OrderBy(doc => doc.Weight)
                 .ToArray();
         }
     }

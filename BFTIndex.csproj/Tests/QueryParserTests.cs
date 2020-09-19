@@ -9,12 +9,12 @@ namespace BFTIndex.Tests
 {
     class QueryParserTests
     {
-        QueryParser parser;
+        TextParser parser;
 
         [SetUp]
         public void SetUp()
         {
-            parser = new QueryParser();
+            parser = new TextParser();
         }
 
         public void Test(IEnumerable<string> expected, string query)
@@ -29,6 +29,13 @@ namespace BFTIndex.Tests
         {
             Test(new List<string>() { "not word" }, query);
 
+        }
+
+        [TestCase("word not word not not parser")]
+        public void GetAllNotWords(string query)
+        {
+            Assert.AreEqual(new HashSet<string>() { "word", "parser" },
+                parser.GetAllNotWords(query).ToHashSet<string>());
         }
     }
 }
