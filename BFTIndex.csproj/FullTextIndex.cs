@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using BFTIndex.Models;
 
@@ -138,6 +139,22 @@ namespace BFTIndex
             return words.Contains(word);
         }
 
+        //Можно за O(|words|+|phrase|) сделать. Поиск подстроки в строке.
+        public bool Contains(IEnumerable<string> phrase)
+        {
+            var phraseList = phrase.ToList();
+            var queue = new Queue<string>(words.Take(phraseList.Count));
+            foreach (var word in words.Skip(phraseList.Count))
+            {
+                if (queue.ToList().SequenceEqual(phraseList))
+                    return true;
+                queue.Dequeue();
+                queue.Enqueue(word);
+            }
+
+            return queue.ToList().SequenceEqual(phraseList);
+        }
+
         public int Count(string word)
         {
             return words.Where(w => word == w).Count();
@@ -156,6 +173,7 @@ namespace BFTIndex
         IEnumerable<string> GetAllWords(string text);
         IEnumerable<string> GetAllAllowedWords(string text);
         IEnumerable<string> GetAllNotWords(string text);
+        IEnumerable<string> GetAllPhrases(string text);
     }
 
     public class TextParser : ITextParser
@@ -168,6 +186,7 @@ namespace BFTIndex
 
         public IEnumerable<string> GetAllAllowedWords(string text)
         {
+            throw new NotImplementedException();
             var matches = Regex.Matches(text, @"^(?!.*not[\W+]\w+).*$");
             return matches.Cast<Match>().Select(match => match.Value);
         }
@@ -176,6 +195,18 @@ namespace BFTIndex
         {
             var matches = Regex.Matches(text, @"(not )+(\w+)");
             return matches.Cast<Match>().Select(match => match.Groups[2].ToString());
+        }
+
+        public IEnumerable<string> GetAllPhrases(string text)
+        {
+            var matches = Regex.Matches(text, @"""(.*?)""");
+            return matches.Cast<Match>().Select(match => match.Groups[1].ToString());
+        }
+
+        public string RemoveDelimeters(string text)
+        {
+            var textWitSpaces = Regex.Replace(text, @"[^\w+ ]", "");
+            return Regex.Replace(textWitSpaces, @" {1,}", " ");
         }
     }
 
@@ -233,16 +264,23 @@ namespace BFTIndex
         {
             var queryNotWords = GetAllowedNormalizedWords(parser.GetAllNotWords(query)).ToHashSet<string>();
             queryNotWords.Add("not");
+
             var queryWords = parser.GetAllWords(query)
                 .Where(word => !queryNotWords.Contains(word));
             queryWords = GetAllowedNormalizedWords(queryWords);
 
-            if (!queryWords.Any())
+            var queryPhrases = GetAllowedNormalizedWords(parser.GetAllPhrases(query))
+                .Select(parser.RemoveDelimeters)
+                .Select(phrase => GetAllowedNormalizedWords(parser.GetAllWords(phrase)));
+            ;
+            if (!queryWords.Any() && !queryPhrases.Any())
                 return new MatchedDocument[0];
+            //var l = queryPhrases.ToList();
 
             var matchedDocuments = documents
-                .Where(doc => queryWords.All(doc.Value.Contains) && 
-                       queryNotWords.All(word => !doc.Value.Contains(word)));
+                .Where(doc => queryWords.All(doc.Value.Contains) &&
+                       queryNotWords.All(word => !doc.Value.Contains(word)) &&
+                       queryPhrases.All(phrase => doc.Value.Contains(phrase)));
 
             return matchedDocuments
                 .Select(doc => new MatchedDocument(doc.Key, TFIDF(queryWords, doc.Value)))

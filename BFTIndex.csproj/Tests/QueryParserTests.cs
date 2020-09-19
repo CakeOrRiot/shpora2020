@@ -17,25 +17,38 @@ namespace BFTIndex.Tests
             parser = new TextParser();
         }
 
-        public void Test(IEnumerable<string> expected, string query)
-        {
-            Assert.AreEqual(expected, parser.GetAllAllowedWords(query));
-        }
-
-        [TestCase("not word")]
-        [TestCase("not not word")]
-        [TestCase("not not not word")]
-        public void ManyNots(string query)
-        {
-            Test(new List<string>() { "not word" }, query);
-
-        }
-
         [TestCase("word not word not not parser")]
+        [TestCase("word not word not parser")]
+        [TestCase("not word not word not parser")]
         public void GetAllNotWords(string query)
         {
             Assert.AreEqual(new HashSet<string>() { "word", "parser" },
                 parser.GetAllNotWords(query).ToHashSet<string>());
         }
+
+        [TestCase("word \"print,,,\" another,. \"apple\" ")]
+        [TestCase("word \"print,,,\" another,. \"apple\" ")]
+        [TestCase("word \"print,,,\" another,.   \"apple\" ")]
+        //[TestCase("word not word not parser")]
+        //[TestCase("not word not word not parser")]
+        public void GetAllPhrasesSingleWords(string query)
+        {
+            Assert.AreEqual(new HashSet<string>() { "print,,,", "apple" },
+                parser.GetAllPhrases(query).ToHashSet<string>());
+        }
+
+        [TestCase("word \"print,,open;;; door\" another,. \"apple\" ")]
+        public void GetAllPhrasesMultiWords(string query)
+        {
+            Assert.AreEqual(new HashSet<string>() { "print,,open;;; door", "apple" },
+                parser.GetAllPhrases(query).ToHashSet<string>());
+        }
+
+        [TestCase("word \"print,,open;;; door\" another,. \"apple\" \"")]
+        public void GetAllPhrasesAdditionalQuote(string query)
+        {
+            Assert.AreEqual(new HashSet<string>(), null);
+        }
+
     }
 }
